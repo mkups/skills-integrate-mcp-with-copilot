@@ -3,6 +3,83 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const userIconBtn = document.getElementById("user-icon-btn");
+  const userMenu = document.getElementById("user-menu");
+  const loginForm = document.getElementById("login-form");
+  const loginMessage = document.getElementById("login-message");
+  const loginFormContainer = document.getElementById("login-form-container");
+  const logoutContainer = document.getElementById("logout-container");
+  const logoutBtn = document.getElementById("logout-btn");
+
+  // Track authentication state
+  let isTeacher = false;
+  let teacherUsername = null;
+
+  // Toggle user menu
+  userIconBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    userMenu.classList.toggle("hidden");
+  });
+
+  // Close menu when clicking outside
+  document.addEventListener("click", (event) => {
+    if (!userMenu.contains(event.target) && event.target !== userIconBtn) {
+      userMenu.classList.add("hidden");
+    }
+  });
+
+  // Handle login
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const username = document.getElementById("teacher-username").value;
+    const password = document.getElementById("teacher-password").value;
+
+    try {
+      const response = await fetch(
+        `/auth/login?username=${encodeURIComponent(
+          username
+        )}&password=${encodeURIComponent(password)}`,
+        { method: "POST" }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        isTeacher = true;
+        teacherUsername = result.username;
+
+        // Update UI
+        loginForm.reset();
+        loginFormContainer.classList.add("hidden");
+        logoutContainer.classList.remove("hidden");
+        document.getElementById("logged-in-user").textContent = teacherUsername;
+        loginMessage.classList.add("hidden");
+
+        // Refresh activities to show delete buttons for teachers
+        fetchActivities();
+      } else {
+        loginMessage.textContent = "Invalid username or password";
+        loginMessage.className = "error";
+        loginMessage.classList.remove("hidden");
+      }
+    } catch (error) {
+      loginMessage.textContent = "Login failed. Please try again.";
+      loginMessage.className = "error";
+      loginMessage.classList.remove("hidden");
+      console.error("Error logging in:", error);
+    }
+  });
+
+  // Handle logout
+  logoutBtn.addEventListener("click", () => {
+    isTeacher = false;
+    teacherUsername = null;
+    loginFormContainer.classList.remove("hidden");
+    logoutContainer.classList.add("hidden");
+    loginForm.reset();
+    loginMessage.classList.add("hidden");
+    fetchActivities();
+  });
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -21,7 +98,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const spotsLeft =
           details.max_participants - details.participants.length;
 
-        // Create participants HTML with delete icons instead of bullet points
+        // Create participants HTML with delete icons only for teachers
         const participantsHTML =
           details.participants.length > 0
             ? `<div class="participants-section">
@@ -29,8 +106,12 @@ document.addEventListener("DOMContentLoaded", () => {
               <ul class="participants-list">
                 ${details.participants
                   .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                    (email) => {
+                      const deleteBtn = isTeacher
+                        ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button>`
+                        : "";
+                      return `<li><span class="participant-email">${email}</span>${deleteBtn}</li>`;
+                    }
                   )
                   .join("")}
               </ul>
@@ -73,11 +154,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const activity = button.getAttribute("data-activity");
     const email = button.getAttribute("data-email");
 
+    if (!isTeacher) {
+      messageDiv.textContent = "Only teachers can unregister students";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      return;
+    }
+
     try {
       const response = await fetch(
         `/activities/${encodeURIComponent(
           activity
-        )}/unregister?email=${encodeURIComponent(email)}`,
+        )}/unregister?email=${encodeURIComponent(
+          email
+        )}&teacher_username=${encodeURIComponent(teacherUsername)}`,
         {
           method: "DELETE",
         }
